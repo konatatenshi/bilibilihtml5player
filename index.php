@@ -1,21 +1,74 @@
- <?php
-// 获取B站API
-$av = isset($_GET['av']) ? $_GET['av'] : '';
-$page = isset($_GET['p']) ? $_GET['p'] : '1';
-$handle = file_get_contents("http://www.bilibilijj.com/Api/AvToCid/".$av."");
-$content = json_decode($handle, true);
-$fanju = $content["list"];
-if ($content["msg"] !== "OK"){echo "错误的AV号！";exit;};
-// print_r($fanju);
-$key = array_search($page, array_column($fanju, 'P'));
-if (isset($_GET['d1d'])) {
-	// 输出内容
-		header('HTTP/1.1 301 Moved Permanently');//发出301头部 
-		header('Location:https://www.bilibili.com/html/html5player.html?aid='.$av.'&cid='.$fanju[$key]["CID"].'');//跳转到HTML5的Bilibili
-		echo '<br><li><a target="_blank" href="https://www.bilibili.com/html/html5player.html?aid='.$av.'&cid='.$fanju[$key]["CID"].'">'.$content["title"].'</a></li>';
-	}else{
-		echo '<link rel="stylesheet" href="video.css" type="text/css" />';
-		echo "\n";
-		echo '<div class="vid-wrapper"><video controls="" width="800" preload="" poster="'.$content["img"].'"><source src="'.$fanju[$key]["Mp4Url"].'" type="video/mp4"/>你的浏览器不支持播放！</video></div>';
-	};
-?> 
+<?php
+header("Content-type:text/html;charset=utf-8");
+function GetCurl($url){
+    $curl = curl_init();
+    curl_setopt($curl,CURLOPT_RETURNTRANSFER,1);
+    curl_setopt($curl,CURLOPT_URL, $url);
+    curl_setopt($curl,CURLOPT_USERAGENT, $_SERVER['HTTP_USER_AGENT']);
+    $resp = curl_exec($curl);
+    curl_close($curl);
+    return $resp;
+}
+$bv = isset($_GET['bv'])?$_GET['bv']:'';
+$av = isset($_GET['av'])?$_GET['av']:'';
+class Bilibili
+{
+    protected $tr = "fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF";
+    protected $xor = 177451812;
+    protected $add = 8728348608;
+    protected $s = [11, 10, 3, 8, 4, 6];
+
+    /**
+     * BV 转 AV
+     *
+     * @param $bv
+     * @return int
+     */
+    public function dec($bv)
+    {
+        $r = 0;
+        $tr = array_flip(str_split($this->tr));
+        for ($i = 0; $i < 6; $i++) {
+            $r += $tr[$bv[$this->s[$i]]] * (pow(58, $i));
+        }
+        return ($r - $this->add) ^ $this->xor;
+    }
+
+    /**
+     *
+     * AV 转 BV
+     *
+     * @param $av
+     * @return string
+     */
+    public function enc($av)
+    {
+        $tr = str_split($this->tr);
+        $bv = 'BV1  4 1 7  ';
+        $av = ($av ^ $this->xor) + $this->add;
+        for ($i = 0; $i < 6; $i++) {
+            $bv[$this->s[$i]] = $tr[floor($av/pow(58,$i)%58)];
+        }
+        return $bv;
+    }
+}
+$bilibili = new Bilibili;
+if(!empty($bv)){
+	$av = $bilibili -> dec($bv);
+}elseif(!empty($av)){
+	$bv = $bilibili -> enc($av);
+}
+$resp = GetCurl("https://api.bilibili.com/x/player/pagelist?bvid=".$bv."&jsonp=jsonp");
+$resp = json_decode($resp,true);
+$cid = $resp['data'][0]['cid'];
+if(!empty($cid)){
+	$out['code'] = 200;
+	$out['aid'] = $av;
+	$out['bvid'] = $bv;
+	$out['cid'] = $cid;
+}else{
+	$out['code'] = 400;
+}
+echo json_encode($out);
+exit;
+?>
